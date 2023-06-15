@@ -1,7 +1,16 @@
 from __future__ import absolute_import
 
-__version__ = '1.2.1'
+USE_GPU = False
 
-# import the important things into the package's top-level namespace.
-from .sparseqr import qr, rz, solve, permutation_vector_to_matrix
+# If not already, compile the wrapper
+try:
+    from ._sparseqr import ffi, lib
+except ImportError:
+    print("--- Compiling SparseQR wrapper ---")
+    from .sparseqr_gen import main
 
+    main(use_gpu=USE_GPU)
+
+finally:
+    from .sparseqr import qr, solve, permutation_vector_to_matrix, initialize
+    initialize(use_gpu=USE_GPU)

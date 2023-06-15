@@ -1,18 +1,20 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+import time
 
-from __future__ import division, print_function, absolute_import
-
-import scipy.sparse.linalg
+import numpy as np
+import scipy
 import sparseqr
 
 if __name__ == "__main__":
+    start_time = time.time()
+    n = 500
     # QR decompose a sparse matrix M such that  Q R = M E
-    #
-    M = scipy.sparse.rand(10, 10, density=0.1)
+    A = scipy.sparse.rand(n, n, density=0.1)
+    x_truth = np.random.rand(n, 1)
 
     # Solve many linear systems "M x = b for b in columns(B)"
-    #
-    B = scipy.sparse.rand(10, 1, density=0.1)  # many RHS, sparse (could also have just one RHS with shape (10,))
-    x = sparseqr.solve(M, B, tolerance=0)
-    print(x)
+    b = A * x_truth
+    x_solve = sparseqr.solve(A, b, tolerance=0)
+
+    print("Relative error in solution: ", np.linalg.norm(x_truth - x_solve) / np.linalg.norm(x_solve))
+    print("Relative error in residual: ", np.linalg.norm(A.dot(x_solve) - b) / np.linalg.norm(b))
+    print(f"Time used: {time.time() - start_time:.2f} seconds")
