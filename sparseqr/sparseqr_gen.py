@@ -1,52 +1,25 @@
-'''
-Author: Yotam Gingold <yotam (strudel) yotamgingold.com>
-License: Public Domain [CC0](http://creativecommons.org/publicdomain/zero/1.0/)
-Description: Wrapper for SuiteSparse qr() and solve() functions. Matlab and Julia have it, Python should have it, too.
-'''
-
 from __future__ import print_function, division, absolute_import
+
 import os
-from os.path import join, expanduser
-import platform
 
 from cffi import FFI
 
-include_dirs = []
+include_dirs = ['/usr/include/']
 library_dirs = []
 libraries = ['spqr']
 
-if platform.system() == 'Windows':
-    include_dirs.append( join('C:', 'Program Files', 'Python', 'suitesparse') )
-else:
-    include_dirs.append( '/usr/include/suitesparse' )
-    ## Homebrew on macOS arm64 puts headers and libraries
-    ## in `/opt/homebrew`. That's not on the default path, so add them:
-    include_dirs.append( '/opt/homebrew/include' )
-    library_dirs.append( '/opt/homebrew/lib' )
+ffi_builder = FFI()
 
-# for compatibility with conda envs
-if 'CONDA_DEFAULT_ENV' in os.environ:
-    homedir = expanduser("~")
-    include_dirs.append( join(homedir, 'anaconda3', 'envs', os.environ['CONDA_DEFAULT_ENV'], 'Library', 'include', 'suitesparse') )
-    include_dirs.append( join(homedir, 'miniconda3', 'envs', os.environ['CONDA_DEFAULT_ENV'], 'Library', 'include', 'suitesparse') )
+ffi_builder.set_source("sparseqr._sparseqr",
+                       """ 
+                       #define SUITESPARSE_CUDA
+                       #include <SuiteSparseQR_C.h>
+                        """,
+                       include_dirs=include_dirs,
+                       library_dirs=library_dirs,
+                       libraries=libraries)
 
-if platform.system() == 'Windows':
-    # https://github.com/yig/PySPQR/issues/6
-    libraries.extend( ['amd','btf','camd','ccolamd','cholmod','colamd','cxsparse'
-'klu','lapack','ldl','lumfpack','metis','suitesparseconfig','libblas'] )
-
-ffibuilder = FFI()
-
-ffibuilder.set_source( "sparseqr._sparseqr",
-    """#include <SuiteSparseQR_C.h>
-""",
-    ## You may need to modify the following line,
-    ## which is needed on Ubuntu and harmless on Mac OS.
-    include_dirs = include_dirs,
-    library_dirs = library_dirs,
-    libraries = libraries )
-
-ffibuilder.cdef("""
+ffi_builder.cdef("""
 // The int... is a magic thing which tells the compiler to figure out what the right
 // integer type is.
 typedef int... SuiteSparse_long;
@@ -55,7 +28,7 @@ typedef int... SuiteSparse_long;
 
 // The cholmod_common struct can't be completely opaque,
 // since we need to allocate space for one.
-typedef struct cholmod_common { ...; } cholmod_common ;
+typedef struct cholmod_common { int useGPU; ...; } cholmod_common ;
 
 // We can keep the cholmod_sparse struct opaque since we will only ever
 // interact with it by converting to and from a triplet struct.
@@ -117,7 +90,7 @@ typedef struct cholmod_triplet_struct
 	* no entry in a triplet matrix is ever ignored.
 	*/
 
-    int itype ; /* CHOLMOD_LONG: i and j are SuiteSparse_long.  Otherwise int */
+    int itype ; /* CHOLMOD_LONG: i and j are int64_t.  Otherwise int */
     int xtype ; /* pattern, real, complex, or zomplex */
     int dtype ; /* x and z are double or float */
 
@@ -128,10 +101,21 @@ typedef struct cholmod_triplet_struct
 /* cholmod_start:  first call to CHOLMOD */
 /* -------------------------------------------------------------------------- */
 int cholmod_l_start (cholmod_common *) ;
+
 /* -------------------------------------------------------------------------- */
 /* cholmod_finish:  last call to CHOLMOD */
 /* -------------------------------------------------------------------------- */
 int cholmod_l_finish (cholmod_common *) ;
+
+/* -------------------------------------------------------------------------- */
+/* cholmod_l_gpu_memorysize:  query GPU memory */
+/* -------------------------------------------------------------------------- */
+int cholmod_l_gpu_memorysize /* GPU memory size available, 1 if no GPU */
+(
+    size_t         *total_mem,
+    size_t         *available_mem,
+    cholmod_common *Common
+) ;
 
 /* -------------------------------------------------------------------------- */
 /* cholmod_free_sparse:  free a sparse matrix */
@@ -307,7 +291,7 @@ SuiteSparse_long SuiteSparseQR_C /* returns ???, (-1) if failure */
 (
     /* inputs: */
     int ordering,               /* all, except 3:given treated as 0:fixed */
-    double tol,                 /* columns with 2-norm <= tol treated as 0 */
+    double tol,                /* columns with 2-norm <= tol treated as 0 */
     SuiteSparse_long econ,      /* e = max(min(m,econ),rank(A)) */
     int getCTX,                 /* 0:Z=C, 1:Z=c', 2: z=X */
     cholmod_sparse *A,          /* m-by-n sparse matrix to factorize */
@@ -377,10 +361,10 @@ cholmod_sparse *SuiteSparseQR_C_backslash_sparse   /* returns X, or NULL */
 #define SPQR_NO_TOL ...            /* if -2 < tol < 0, then no tol is used */
 """)
 
+
 def main():
-    ## Two dirnames because ffibuilder.set_source()
-    ## passes the module name: "sparseqr._sparseqr"
-    ffibuilder.compile( verbose = True, tmpdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) )
+    ffi_builder.compile(verbose=True, tmpdir=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 if __name__ == "__main__":
     main()
