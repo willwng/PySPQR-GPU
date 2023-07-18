@@ -19,7 +19,6 @@ import sparseqr
 A = scipy.sparse.rand(n, n, density=0.1)
 x_truth = np.random.rand(n, 1)
 
-# Solve many linear systems "M x = b for b in columns(B)"
 b = A * x_truth
 x_solve = sparseqr.solve(A, b, tolerance=0)
 ```
